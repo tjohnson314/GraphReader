@@ -50,17 +50,28 @@ class Application(Frame):
 
     def process(self):
         import learner
-        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
+        self.img = Image.open(self.mymaster.ImageTitle)
         myGraph = learner.readImage(self.img)
 
         import networkx as nx
         import matplotlib.pyplot as plt
 
-        nx.draw(myGraph, node_color='k', node_size=25)
-        plt.savefig("images/"+self.mymaster.ImageTitle+"-Output.png")
+        for node in myGraph.nodes():
+            xPos = node.x
+            yPos = node.y
+            #TODO: Draw node at (xPos, yPos)
+            
+        for edge in myGraph.edges():
+            x0 = edge[0].x
+            y0 = edge[0].y
+            x1 = edge[1].x
+            y1 = edge[1].y
+            #TODO: Draw line from (x0, y0) to (x1, y1)
+        #nx.draw(myGraph, node_color='k', node_size=25)
+        plt.savefig(self.mymaster.ImageTitle+"-Output.png")
         plt.clf()
 
-        self.img = ImageTk.PhotoImage(Image.open("images/"+self.mymaster.ImageTitle+"-Output.png"))
+        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle+"-Output.png"))
         self.mymaster.OutputImagePanel.config(image = self.img)
         self.mymaster.update()
 
@@ -72,7 +83,7 @@ class Application(Frame):
         # self.QUIT = Button(self, text = "QUIT", command = self.quit)
         # self.QUIT.pack(side="top")
 
-        self.mymaster.ImageTitle = 'hacktech.png'
+        self.mymaster.ImageTitle = '../Images/image1.png'
         self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
         self.mymaster.InputImagePanel.config(image = self.img)
         self.mymaster.update()
@@ -98,4 +109,5 @@ def main():
 
     root.destroy()
 
-main()
+if __name__ == '__main__':
+    main()

@@ -48,7 +48,7 @@ def findNodes(imageData):
                 #I'm using a hack that manually chooses the minIntensity, which may
                 #vary for different input graphs
                 nodes.append(Node(j, i, imageData[i][j]))
-                print j, i, margin
+                #print j, i, margin
                 #print imageData[i - margin:i + margin + 1,j - margin:j + margin + 1]
     nodes.sort(key = lambda node: -node.intensity)
     #for node in nodes:
@@ -151,12 +151,40 @@ def findEdgesHough(imageData):
     lines = []
     height, width = imageData.shape
     h, theta, d = hough_line(imageData)
+    
+    """
+    targetTheta = 0
+    minThetaDiff = 100
+    minThetaIndex = 0
+    print theta
+    for i in range(1, len(theta)):
+        thetaDiff = abs(targetTheta - theta[i])
+        if(thetaDiff < minThetaDiff):
+            minThetaDiff = thetaDiff
+            minThetaIndex = i
+            
+    targetDist = 5
+    minDistDiff = 100
+    minDistIndex = 0
+    for i in range(1, len(d)):
+        distDiff = abs(targetDist - d[i])
+        if(distDiff < minDistDiff):
+            minDistDiff = distDiff
+            minDistIndex = i
+            
+    print "Theta range: ", theta[minThetaIndex - 5: minThetaIndex + 6]
+    print "Distance range: ", d[minDistIndex - 5 : minDistIndex + 6]        
+    print "Target line value: ", h[minDistIndex-5:minDistIndex+6, minThetaIndex-5:minThetaIndex+6]
+    """
+    
     for hval, angle, dist, in zip(*hough_line_peaks(h, theta, d)):
+        print hval, angle*180.0/math.pi, dist
         #In theory, our line should go from (0, y0) to (width, y1)
         #But if y0 and y1 are outside our bounds, we adjust them
         y0 = (dist - 0 * np.cos(angle)) / np.sin(angle)
         y1 = (dist - width*np.cos(angle)) / np.sin(angle)
         x0, y0, x1, y1 = scaleLines(y0, y1, width, height)
+        print x0, y0, x1, y1
                 
         lines.append(((x0, y0), (x1, y1)))
         
@@ -198,6 +226,9 @@ def scaleLines(y0, y1, width, height):
 def readImage(image):
     blurredImage = image.filter(ImageFilter.GaussianBlur(radius = 2))
     imageData = toMatrix(blurredImage, blurredImage.size[1], blurredImage.size[0])
+    #for i in xrange(len(imageData)):
+    #    for j in xrange(150, len(imageData[0])):
+    #        imageData[i][j] = 0
     graph = nx.Graph()
     nodes = findNodes(imageData)
     edges = findEdgesHough(imageData)
@@ -209,13 +240,15 @@ def readImage(image):
     print "Finding nodes for each edge"
     maxDist = 20
     for edge in edges:
-        print "Edge: ", edge
+        #print "Edge: ", edge
         edgeNodes = []
         for node in nodes:
             #print "Node: ", node
             #print "Distance: ", findDistPointToLine(node, edge)
             dist = findDistPointToLine(node, edge)
             if(findDistPointToLine(node, edge) < maxDist):
+                #print "Node: ", node
+                #print "Distance: ", dist
                 edgeNodes.append(node)
         
         if(len(edgeNodes) == 2):
@@ -225,11 +258,13 @@ def readImage(image):
                 graph.add_node(edgeNodes[1])
             if((edgeNodes[0], edgeNodes[1]) not in graph.edges()):
                 graph.add_edge(edgeNodes[0], edgeNodes[1])
+        else:
+            edgeNodes.sort(key = lambda node: (node.x, node.y))
                 
     
     #printTest(imageData)
     return graph
-
+    
 def findDistSqPoints(x0, y0, x1, y1):
     return (x1 - x0)*(x1 - x0) + (y1 - y0)*(y1 - y0)
 
@@ -292,7 +327,7 @@ def printTest(imageData):
     ax[2].imshow(imageData, cmap = plt.cm.gray)
     height, width = imageData.shape
     for hval, angle, dist, in zip(*hough_line_peaks(h, theta, d, min_angle = 10)):
-        #print hval, angle*180.0/math.pi, dist
+        print hval, angle*180.0/math.pi, dist
         y0 = (dist - 0 * np.cos(angle)) / np.sin(angle)
         y1 = (dist - width*np.cos(angle)) / np.sin(angle)
         x0, y0, x1, y1 = scaleLines(y0, y1, width, height)
@@ -343,7 +378,7 @@ def runTests():
     image = Image.open("../Images/image1.png")
     blurredImage = image.filter(ImageFilter.GaussianBlur(radius = 2))
     imageData = toMatrix(blurredImage, blurredImage.size[1], blurredImage.size[0])
-    printTest(imageData)
+    #printTest(imageData)
     #nodes = findNodes(imageData)
 
 
@@ -357,5 +392,7 @@ def testInterpolateVal():
 if __name__ == '__main__':
     #testInterpolateVal()
     #runTests()
-    image = Image.open("../Images/image1.png")
-    readImage(image)
+    image = Image.open("../Images/image5.png")
+    graph = readImage(image)
+    print graph.nodes()
+    print graph.edges()
