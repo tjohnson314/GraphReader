@@ -1,6 +1,8 @@
 from Tkinter import *
 from tkFileDialog import askopenfilename #
-from PIL import ImageTk, Image, ImageDraw
+import PIL
+from PIL import ImageTk
+from PIL import Image, ImageDraw
 
 class dropDownMenu:
     label3 = None
@@ -36,7 +38,9 @@ class dropDownMenu:
     def browsePicture(self):
         Tk().withdraw()
         self.mymaster.ImageTitle = askopenfilename()
-        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
+        self.tempImage = Image.open(self.mymaster.ImageTitle)
+        self.tempImage = self.tempImage.resize((470, 520), Image.ANTIALIAS)
+        self.img = ImageTk.PhotoImage( self.tempImage)
         self.mymaster.InputImagePanel.config(image = self.img)
         self.mymaster.update()
 
@@ -60,6 +64,7 @@ class Application(Frame):
         height = 400
         white = (255, 255, 255)
         black = (0,0,0)
+        radius = 3;
 
         imageOutput = Image.new("RGB", (width, height), white)
         draw = ImageDraw.Draw(imageOutput)
@@ -67,18 +72,18 @@ class Application(Frame):
         for node in myGraph.nodes():
             xPos = node.x
             yPos = node.y
-            #TODO: Draw node at (xPos, yPos)
-            draw.point([(xPos,yPos)], black)
-            
+            # Draw node at (xPos, yPos)
+            draw.circle((xPos+radius,yPos+radius,xPos-radius,yPos-radius), black)
+
         for edge in myGraph.edges():
             x0 = edge[0].x
             y0 = edge[0].y
             x1 = edge[1].x
             y1 = edge[1].y
-            #TODO: Draw line from (x0, y0) to (x1, y1)
+            # Draw line from (x0, y0) to (x1, y1)
             draw.line([(x0,y0),(x1,y1)],black)
 
-        outputTitle = appendAfterLastSlash(self.mymaster.ImageTitle, "Output")
+        outputTitle = self.appendAfterLastSlash(self.mymaster.ImageTitle, "Output")
         imageOutput.save(outputTitle)
 
         self.img = ImageTk.PhotoImage(Image.open(outputTitle))
@@ -93,34 +98,42 @@ class Application(Frame):
         # self.QUIT = Button(self, text = "QUIT", command = self.quit)
         # self.QUIT.pack(side="top")
 
-        self.mymaster.ImageTitle = '../Images/image1.png'
-        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
+        self.mymaster.ImageTitle = 'hacktech.png'
+        self.tempImage = Image.open(self.mymaster.ImageTitle)
+        self.tempImage = self.tempImage.resize((470, 520), Image.ANTIALIAS)
+        self.img = ImageTk.PhotoImage( self.tempImage)
         self.mymaster.InputImagePanel.config(image = self.img)
         self.mymaster.update()
 
 
-def appendAfterLastSlash(s, toAppend):
-    output = "";
-    foundSlash = False
-    for i in range(len(s) - 1, -1, -1):
-        if not foundSlash and s[i] == '/':
-            output = '/' + toAppend + output
-            foundSlash = True
-        else:
-            output = s[i] + output
-            
-    return output
+    def appendAfterLastSlash(self, s, toAppend):
+        output = "";
+        foundSlash = False
+        for i in range(len(s) - 1, -1, -1):
+            if not foundSlash and s[i] == '/':
+                output = '/' + toAppend + output
+                foundSlash = True
+            else:
+                output = s[i] + output
 
+        return output
+
+def make_panel(master, x, y, h, w, *args, **kwargs):
+    f = Frame(master, height=h, width=w)
+    f.pack_propagate(0) # don't shrink
+    f.place(x=x, y=y)
+    label = Label(f, *args, **kwargs)
+    label.pack(fill=BOTH, expand=1)
+    return label
 
 
 def main():
     root = Tk()
 
     root.ImageTitle = ""
-    root.InputImagePanel = Label()
-    root.InputImagePanel.pack(side = "left", fill = "both", expand = "yes")
-    root.OutputImagePanel = Label()
-    root.OutputImagePanel.pack(side = "right", fill = "both", expand = "yes")
+    root.InputImagePanel = make_panel(root, 10, 60, 580, 480, text='Input', background='white')
+    root.OutputImagePanel = make_panel(root, 510, 60, 580, 480, text='Output', background='white')
+
     root.wm_title("draw the Graph")
     # root.configure(background="black")
 
