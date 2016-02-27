@@ -1,6 +1,6 @@
 from Tkinter import *
 from tkFileDialog import askopenfilename #
-from PIL import ImageTk, Image
+from PIL import ImageTk, Image, ImageDraw
 
 class dropDownMenu:
     label3 = None
@@ -56,10 +56,19 @@ class Application(Frame):
         import networkx as nx
         import matplotlib.pyplot as plt
 
+        width = 400
+        height = 400
+        white = (255, 255, 255)
+        black = (0,0,0)
+
+        imageOutput = Image.new("RGB", (width, height), white)
+        draw = ImageDraw.Draw(imageOutput)
+
         for node in myGraph.nodes():
             xPos = node.x
             yPos = node.y
             #TODO: Draw node at (xPos, yPos)
+            draw.point([(xPos,yPos)], black)
             
         for edge in myGraph.edges():
             x0 = edge[0].x
@@ -67,11 +76,11 @@ class Application(Frame):
             x1 = edge[1].x
             y1 = edge[1].y
             #TODO: Draw line from (x0, y0) to (x1, y1)
-        #nx.draw(myGraph, node_color='k', node_size=25)
-        plt.savefig(self.mymaster.ImageTitle+"-Output.png")
-        plt.clf()
+            draw.line([(x0,y0),(x1,y1)],black)
 
-        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle+"-Output.png"))
+        imageOutput.save("Output"+self.mymaster.ImageTitle)
+
+        self.img = ImageTk.PhotoImage(Image.open("Output"+self.mymaster.ImageTitle))
         self.mymaster.OutputImagePanel.config(image = self.img)
         self.mymaster.update()
 
