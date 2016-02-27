@@ -35,20 +35,23 @@ def getCurvatureCheckDist():
 def findNodes(imageData):
     nodes = []
     margin = getMargin()
+    minIntensity = 40
     for i in xrange(margin, len(imageData) - margin):
         for j in xrange(margin, len(imageData[0]) - margin):
-            if(imageData[i][j] > 0 and isLocalMax(imageData, i, j, margin)):
+            if(imageData[i][j] > minIntensity and isLocalMax(imageData, i, j, margin)):
                 #TODO: Finish curvature computation to remove some (but not all) 
                 #of the edge points
                 #minCurvature, maxCurvature = getCurvatureRange(imageData, i, j)
                 #nodes.append(Node(i, j, minCurvature, maxCurvature))
                 #print i, j, minCurvature, maxCurvature
-                nodes.append(Node(i, j, imageData[i][j]))
-                print i, j, margin
-                print imageData[i - margin:i + margin + 1,j - margin:j + margin + 1]
+                #I'm using a hack that manually chooses the minIntensity, which may
+                #vary for different input graphs
+                nodes.append(Node(j, i, imageData[i][j]))
+                print j, i, margin
+                #print imageData[i - margin:i + margin + 1,j - margin:j + margin + 1]
     nodes.sort(key = lambda node: -node.intensity)
-    for node in nodes:
-        print node
+    #for node in nodes:
+    #    print node
     return nodes
 
     
@@ -144,56 +147,122 @@ def invDistanceSq(x1, y1, x2, y2):
 
 #Performs a Hough transform to find all edges
 def findEdgesHough(imageData):
+    lines = []
     height, width = imageData.shape
     h, theta, d = hough_line(imageData)
     for hval, angle, dist, in zip(*hough_line_peaks(h, theta, d)):
         #In theory, our line should go from (0, y0) to (width, y1)
         #But if y0 and y1 are outside our bounds, we adjust them
         y0 = (dist - 0 * np.cos(angle)) / np.sin(angle)
-        y1 = (dist - cols*np.cos(angle)) / np.sin(angle)
-        x0 = 0
-        x1 = width
-        slope = (y1 - y0)/(x1 - x0)
-        intercept = y0
-        
-        #x = (y - intercept)/slope
-        if(slope > 0):
-            if(y0 < 0):
-                #Find x such that (x, 0) is on this line        
-                x0 = (0 - intercept)/slope
-                y0 = 0
-            
-            if(y1 > height):
-                #Find x xuch that (x, height) is on this line
-                x = (height - intercept)/slope
-                y1 = height
-        else:
-            if(y0 > height):
-                #Find x such that (x, height) is on this line
-                x0 = (height - intercept)/slope
-                y0 = height
-                
-            if(y1 < 0):
-                #Find x such that (x, 0) is on this line)
-                x0 = (0 - intercept)/slope
-                y0 = 0
+        y1 = (dist - width*np.cos(angle)) / np.sin(angle)
+        x0, y0, x1, y1 = scaleLines(y0, y1, width, height)
                 
         lines.append(((x0, y0), (x1, y1)))
         
     return lines
+    
+
+#Takes the line from (0, y0) to (width, y1), and scales it to fit
+#inside our range
+def scaleLines(y0, y1, width, height):
+    x0 = 0
+    x1 = width
+    slope = (y1 - y0)/(x1 - x0)
+    intercept = y0
+    
+    #x = (y - intercept)/slope
+    if(slope > 0):
+        if(y0 < 0):
+            #Find x such that (x, 0) is on this line        
+            x0 = (0 - intercept)/slope
+            y0 = 0
+        
+        if(y1 > height):
+            #Find x xuch that (x, height) is on this line
+            x1 = (height - intercept)/slope
+            y1 = height
+    else:
+        if(y0 > height):
+            #Find x such that (x, height) is on this line
+            x0 = (height - intercept)/slope
+            y0 = height
+            
+        if(y1 < 0):
+            #Find x such that (x, 0) is on this line)
+            x1 = (0 - intercept)/slope
+            y1 = 0
+    return x0, y0, x1, y1
+    
+
+def readImage(image):
+    blurredImage = image.filter(ImageFilter.GaussianBlur(radius = 2))
+    imageData = toMatrix(blurredImage, blurredImage.size[1], blurredImage.size[0])
+    nodes = findNodes(imageData)
+    edges = findEdgesHough(imageData)
+    
+    #print "Nodes: ", nodes
+    #print "Edges: ", edges
+    
+    #Find all of the nodes within maxDist of each edge
+    print "Finding nodes for each edge"
+    maxDist = 20
+    for edge in edges:
+        print "Edge: ", edge
+        for node in nodes:
+            #print "Node: ", node
+            #print "Distance: ", findDistPointToLine(node, edge)
+            dist = findDistPointToLine(node, edge)
+            if(findDistPointToLine(node, edge) < maxDist):
+                print "Node: ", node
+                print "Distance: ", dist
                 
+    printTest(imageData)
+
+
+def findDistSqPoints(x0, y0, x1, y1):
+    return (x1 - x0)*(x1 - x0) + (y1 - y0)*(y1 - y0)
+
+
+#Finds the distance from a node to an edge    
+#The edge is given as a pair of points, and each point as a pair of coordinates
+def findDistPointToLine(node, edge):
+    x0, y0 = edge[0]
+    x1, y1 = edge[1]
+    if(x0 == x1):
+        return abs(x0 - node.x)
+    elif(y0 == y1):
+        return abs(y0 - node.y)
+    else:
+        slope = (y1 - y0)/(x1 - x0)
+        intercept = y0 - slope*x0
+        #print "Slope/intercept: ", slope, intercept
+        
+        #First we find the perpendicular line from our node
+        #to our given line
+        newSlope = -1/slope
+        newIntercept = node.y + node.x/slope
+        #print "New slope/intercept: ", newSlope, newIntercept
+        
+        #Now we find the intersection point of these two lines,
+        #and compute the distance
+        xIntersect, yIntersect = findLineIntersect(slope, intercept, newSlope, newIntercept)
+        #print xIntersect, yIntersect
+        distSq = findDistSqPoints(node.x, node.y, xIntersect, yIntersect)
+        return math.sqrt(distSq)
+        
+
+#Returns the intersection point of a pair of lines, given as a slope/intercept
+#The lines must not have the same slope
+def findLineIntersect(slope1, intercept1, slope2, intercept2):
+    assert(not slope1 == slope2)
+    xIntersect = (intercept2 - intercept1)/(slope1 - slope2)
+    yIntersect = slope1*xIntersect + intercept1
+    return xIntersect, yIntersect
     
     
 def printTest(imageData):
     print "Entering printTest..."
     h, theta, d = hough_line(imageData)
-    x0 = 0
-    y0 = 0
-    x1 = 100
-    y1 = 200
-    #testTheta = 
-    print theta
-    print d
     
     fig, ax = plt.subplots(1, 3, figsize = (10, 4))
     
@@ -212,44 +281,11 @@ def printTest(imageData):
     ax[2].imshow(imageData, cmap = plt.cm.gray)
     height, width = imageData.shape
     for hval, angle, dist, in zip(*hough_line_peaks(h, theta, d, min_angle = 10)):
-        print hval, angle*180.0/math.pi, dist
+        #print hval, angle*180.0/math.pi, dist
         y0 = (dist - 0 * np.cos(angle)) / np.sin(angle)
         y1 = (dist - width*np.cos(angle)) / np.sin(angle)
-        x0 = 0
-        x1 = width
-        slope = (y1 - y0)/(x1 - x0)
-        intercept = y0
-        #print "Next detected line: ", slope, intercept
-        #print x0, y0, x1, y1
-        
-        #x = (y - intercept)/slope
-        if(slope > 0):
-            #print "Positive slope"
-            if(y0 < 0):
-                #print "Adjusting y0"
-                #Find x such that (x, 0) is on this line        
-                x0 = (0 - intercept)/slope
-                y0 = 0
-            
-            if(y1 > height):
-                #print "Adjusting y1"
-                #Find x xuch that (x, height) is on this line
-                x = (height - intercept)/slope
-                y1 = height
-        else:
-            #print "Negative slope"
-            if(y0 > height):
-                #print "Adjusting y0"
-                #Find x such that (x, height) is on this line
-                x0 = (height - intercept)/slope
-                y0 = height
-                
-            if(y1 < 0):
-                #print "Adjusting y1"
-                #Find x such that (x, 0) is on this line)
-                x1 = (0 - intercept)/slope
-                y1 = 0
-        print x0, y0, x1, y1, hval
+        x0, y0, x1, y1 = scaleLines(y0, y1, width, height)
+        #print "Coordinates after: ", x0, y0, x1, y1
         ax[2].plot((x0, x1), (y0, y1), '-r')
         
     ax[2].axis((0, width, height, 0))
@@ -288,9 +324,7 @@ def toMatrix(image, width, height):
     for i in xrange(len(imageData)):
         imageData[i] = 255 - imageData[i] #Flip scale to 0 = white
     
-    dataMatrix = np.asarray(imageData).reshape(width, height)
-    #Add 
-    
+    dataMatrix = np.asarray(imageData).reshape(width, height)    
     return dataMatrix
 
 
@@ -311,6 +345,6 @@ def testInterpolateVal():
 
 if __name__ == '__main__':
     #testInterpolateVal()
-    runTests()
-    #image = Image.open("../Images/image1.png")
-    
+    #runTests()
+    image = Image.open("../Images/image1.png")
+    readImage(image)
