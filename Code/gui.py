@@ -60,7 +60,7 @@ class Application(Frame):
         plt.savefig("images/"+self.mymaster.ImageTitle+"-Output.png")
         plt.clf()
 
-        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
+        self.img = ImageTk.PhotoImage(Image.open("images/"+self.mymaster.ImageTitle+"-Output.png"))
         self.mymaster.OutputImagePanel.config(image = self.img)
         self.mymaster.update()
 
