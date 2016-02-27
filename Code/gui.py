@@ -78,9 +78,10 @@ class Application(Frame):
             #TODO: Draw line from (x0, y0) to (x1, y1)
             draw.line([(x0,y0),(x1,y1)],black)
 
-        imageOutput.save("Output"+self.mymaster.ImageTitle)
+        outputTitle = appendAfterLastSlash(self.mymaster.ImageTitle, "Output")
+        imageOutput.save(outputTitle)
 
-        self.img = ImageTk.PhotoImage(Image.open("Output"+self.mymaster.ImageTitle))
+        self.img = ImageTk.PhotoImage(Image.open(outputTitle))
         self.mymaster.OutputImagePanel.config(image = self.img)
         self.mymaster.update()
 
@@ -96,6 +97,21 @@ class Application(Frame):
         self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
         self.mymaster.InputImagePanel.config(image = self.img)
         self.mymaster.update()
+
+
+def appendAfterLastSlash(s, toAppend):
+    output = "";
+    foundSlash = False
+    for i in range(len(s) - 1, -1, -1):
+        if not foundSlash and s[i] == '/':
+            output = '/' + toAppend + output
+            foundSlash = True
+        else:
+            output = s[i] + output
+            
+    return output
+
+
 
 def main():
     root = Tk()
