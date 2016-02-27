@@ -5,7 +5,7 @@ class WolframCloud:
 
     def wolfram_cloud_call(self, **args):
         arguments = dict([(key, arg) for key, arg in args.iteritems()])
-        result = urlopen("http://www.wolframcloud.com/objects/76f48863-8a68-4d2d-8698-ee2b3ac88aa0", urlencode(arguments))
+        result = urlopen("http://www.wolframcloud.com/objects/91a10361-47b0-406d-89aa-3117f4d46d0c", urlencode(arguments))
         return result.read()
 
     def call(self, x):
