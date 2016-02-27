@@ -6,7 +6,6 @@ class dropDownMenu:
     label3 = None
     def __init__(self,master):
         self.mymaster = master
-        self.filename=""
         self.myMenu = Menu(master)
         master.config(menu=self.myMenu)
 
@@ -36,8 +35,8 @@ class dropDownMenu:
 
     def browsePicture(self):
         Tk().withdraw()
-        self.filename = askopenfilename()
-        self.img = ImageTk.PhotoImage(Image.open(self.filename))
+        self.mymaster.ImageTitle = askopenfilename()
+        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
         self.mymaster.InputImagePanel.config(image = self.img)
         self.mymaster.update()
 
@@ -50,7 +49,20 @@ class Application(Frame):
         self.createWidgets()
 
     def process(self):
-        print "processing here!"
+        import learner
+        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
+        myGraph = learner.readImage(self.img)
+
+        import networkx as nx
+        import matplotlib.pyplot as plt
+
+        nx.draw(myGraph, node_color='k', node_size=25)
+        plt.savefig("images/"+self.mymaster.ImageTitle+"-Output.png")
+        plt.clf()
+
+        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
+        self.mymaster.OutputImagePanel.config(image = self.img)
+        self.mymaster.update()
 
     def createWidgets(self):
 
@@ -60,14 +72,15 @@ class Application(Frame):
         # self.QUIT = Button(self, text = "QUIT", command = self.quit)
         # self.QUIT.pack(side="top")
 
-        self.path = 'hacktech.png'
-        self.img = ImageTk.PhotoImage(Image.open(self.path))
+        self.mymaster.ImageTitle = 'hacktech.png'
+        self.img = ImageTk.PhotoImage(Image.open(self.mymaster.ImageTitle))
         self.mymaster.InputImagePanel.config(image = self.img)
         self.mymaster.update()
 
 def main():
     root = Tk()
 
+    root.ImageTitle = ""
     root.InputImagePanel = Label()
     root.InputImagePanel.pack(side = "left", fill = "both", expand = "yes")
     root.OutputImagePanel = Label()
