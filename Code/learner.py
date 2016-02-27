@@ -6,6 +6,7 @@ from skimage import data
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import networkx as nx
 
 
 class Node:
@@ -197,6 +198,7 @@ def scaleLines(y0, y1, width, height):
 def readImage(image):
     blurredImage = image.filter(ImageFilter.GaussianBlur(radius = 2))
     imageData = toMatrix(blurredImage, blurredImage.size[1], blurredImage.size[0])
+    graph = nx.Graph()
     nodes = findNodes(imageData)
     edges = findEdgesHough(imageData)
     
@@ -208,16 +210,25 @@ def readImage(image):
     maxDist = 20
     for edge in edges:
         print "Edge: ", edge
+        edgeNodes = []
         for node in nodes:
             #print "Node: ", node
             #print "Distance: ", findDistPointToLine(node, edge)
             dist = findDistPointToLine(node, edge)
             if(findDistPointToLine(node, edge) < maxDist):
-                print "Node: ", node
-                print "Distance: ", dist
+                edgeNodes.append(node)
+        
+        if(len(edgeNodes) == 2):
+            if(edgeNodes[0] not in graph.nodes()):
+                graph.add_node(edgeNodes[0])
+            if(edgeNodes[1] not in graph.nodes()):
+                graph.add_node(edgeNodes[1])
+            if((edgeNodes[0], edgeNodes[1]) not in graph.edges()):
+                graph.add_edge(edgeNodes[0], edgeNodes[1])
                 
-    printTest(imageData)
-
+    
+    #printTest(imageData)
+    return graph
 
 def findDistSqPoints(x0, y0, x1, y1):
     return (x1 - x0)*(x1 - x0) + (y1 - y0)*(y1 - y0)
