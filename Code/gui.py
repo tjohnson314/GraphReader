@@ -4,19 +4,19 @@ import PIL
 from PIL import ImageTk
 from PIL import Image, ImageDraw
 
-from urllib import urlencode
-from urllib2 import urlopen
+# from urllib import urlencode
+# from urllib2 import urlopen
 
-class WolframCloud:
-
-    def wolfram_cloud_call(self, **args):
-        arguments = dict([(key, arg) for key, arg in args.iteritems()])
-        result = urlopen("http://www.wolframcloud.com/objects/e3c19a70-cf31-46b3-96d6-88e9d5ecba39", urlencode(arguments))
-        return result.read()
-
-    def call(self, x):
-        textresult =  self.wolfram_cloud_call(x=x)
-        return textresult
+# class WolframCloud:
+#
+#     def wolfram_cloud_call(self, **args):
+#         arguments = dict([(key, arg) for key, arg in args.iteritems()])
+#         result = urlopen("http://www.wolframcloud.com/objects/e3c19a70-cf31-46b3-96d6-88e9d5ecba39", urlencode(arguments))
+#         return result.read()
+#
+#     def call(self, x):
+#         textresult =  self.wolfram_cloud_call(x=x)
+#         return textresult
 
 class dropDownMenu:
     label3 = None
@@ -69,11 +69,12 @@ class Application(Frame):
     def process(self):
         import learner
 
-        ex = WolframCloud()
-        mystring = "https://raw.githubusercontent.com/tjohnson314/GraphReader/master/Images/images/graph24.png";
+        # wolfram api
+        # ex = WolframCloud()
+        # mystring = "https://raw.githubusercontent.com/tjohnson314/GraphReader/master/Images/images/graph24.png";
 
-        # self.img = Image.open(self.mymaster.ImageTitle)
-        # myGraph = learner.readImage(self.img)
+        self.img = Image.open(self.mymaster.ImageTitle)
+        myGraph = learner.readImage(self.img)
 
         ## Wolfram Try...
         myGraph = learner.readImage(ex.call(mystring))
