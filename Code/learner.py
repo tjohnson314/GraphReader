@@ -29,7 +29,7 @@ def getMargin():
     return 10
     
 def getMinNodeDist():
-    return 10
+    return 30
 
 def getCurvatureCheckDist():
     return 4
@@ -39,7 +39,7 @@ def getCurvatureCheckDist():
 def findNodesIntensity(imageData):
     nodes = []
     margin = getMargin()
-    minIntensity = 20
+    minIntensity = 40
     for i in xrange(margin, len(imageData) - margin):
         for j in xrange(margin, len(imageData[0]) - margin):
             if(imageData[i][j] > minIntensity and isLocalMax(imageData, i, j, margin)):
@@ -51,11 +51,11 @@ def findNodesIntensity(imageData):
 
 #Returns true if the current point is the maximum over all points within
 #[x - dist, x + dist] x [y - dist, y + dist]
-def isLocalMax(imageData, x, y, dist):
+def isLocalMax(imageData, x, y, dist, softenMax = 0):
     for i in range(-dist, dist + 1):
         for j in range(-dist, dist + 1):
             #print x, y, x + i, y + j
-            if(imageData[x + i][y + j] > imageData[x][y]):
+            if(imageData[y + i][x + j] > imageData[y][x] + softenMax):
                 return False
     return True
 
@@ -124,8 +124,9 @@ def findNodesHoughCircles(cannyEdges, hough_radii):
         radii.extend([radius] * num_peaks)
 
     #Sort each list by accums
-    tupleCenters = [tuple(center) for center in centers]
-    accums, radii, tupleCenters = zip(*sorted(zip(accums, radii, tupleCenters))[::-1])
+    #We swap the centers, since they are ordered as y, x
+    tupleCenters = [(center[1], center[0]) for center in centers]
+    accums, radii, centers = zip(*sorted(zip(accums, radii, tupleCenters))[::-1])
     
     disjointCenters = []
     disjointRadii = []
@@ -139,13 +140,13 @@ def findNodesHoughCircles(cannyEdges, hough_radii):
         if(not removed[i]):
             #If our current circle does not overlap with previous circles, add it.
             #Then remove all later overlapping circles
-            center_x, center_y = centers[i]
+            center_y, center_x = centers[i]
             disjointCenters.append(centers[i])
             disjointRadii.append(radii[i])
             disjointAccums.append(accums[i])
             
             for j in xrange(i + 1, len(centers)):
-                newCenter_x, newCenter_y = centers[j]
+                newCenter_y, newCenter_x = centers[j]
                 newRadius = radii[i]
                 distSq = findDistSqPoints(center_x, center_y, newCenter_x, newCenter_y)
                 neededDist = radius + newRadius + minRadiusDist
@@ -158,18 +159,34 @@ def findNodesHoughCircles(cannyEdges, hough_radii):
 
 
 def findEdgePoints(imageData):
-    edgePoints = []
-    maxSmallestCurvature = 0.01
-    minLargestCurvature = 0.05
+    edgePoints = np.zeros(imageData.shape)
+    minGradientNeeded = -0.5
+    margin = getMargin()
     for y in xrange(margin, len(imageData) - margin):
         for x in xrange(margin, len(imageData) - margin):
-            minCurvature, maxCurvature = getCurvatureRange(imageData, x, y)
-            if(isLocalMax(imageData, x, y) and minCurvature < maxSmallestCurvature and maxCurvature > minLargestCurvature):
-                edgePoints.append(Node(x, y, imageData[i][j]))
+            minGradient = minGradientRange(imageData, x, y, margin)
+            if(isLocalMax(imageData, x, y, margin, 2) and minGradient < minGradientNeeded):
+                edgePoints[y][x] = 255
+            else:
+                edgePoints[y][x] = 0
                 
-    print edgePoints
+    print "Edge points: ", edgePoints
     return edgePoints
-
+    
+    
+def minGradientRange(imageData, x, y, distCheck):
+    #Look in every direction, and compute the minimum gradient
+    minGradient = 0 #Since we're at a local maximum, this is a safe assumption
+    for angle in [angleDiff*math.pi/180.0 for angleDiff in xrange(0, 360, 10)]:
+        xDiff = math.cos(angle)
+        yDiff = math.sin(angle)
+        currHeight = imageData[y][x]
+        otherHeight = imageData[y + distCheck*yDiff][x + distCheck*xDiff]
+        newGradient = (otherHeight - currHeight)/distCheck
+        if(newGradient < minGradient):
+            minGradient = newGradient
+    
+    return minGradient
     
 #For real-valued x and y, we interpolate the value of imageData[x][y]
 #We average the four surrounding values to get the point in the middle
@@ -210,8 +227,6 @@ def invDistanceSq(x1, y1, x2, y2):
     return 1/((x1 - x2)*(x1 - x2) + (y1 - y2)*(y1 - y2))
 
 
-    
-
 #Takes the line from (0, y0) to (width, y1), and scales it to fit
 #inside our range
 def scaleLines(y0, y1, width, height):
@@ -250,11 +265,17 @@ def readImage(image):
     cannyEdges = canny(imageData, sigma=3)
     #print "Canny edges: ", cannyEdges
     
-    #Look for the most likely Canny edges to be edges between nodes in our diagram
-    edges = probabilistic_hough_line(cannyEdges, threshold = 10, line_length = 100, line_gap = 3)
+    #Look for the most likely edges in our diagram
+    likelyEdges = findEdgePoints(imageData)
+    print "Testing edge"
+    for i in xrange(64, 214):
+        print likelyEdges[i,114]
+    
+    edges = probabilistic_hough_line(likelyEdges)
     
     #Look for local maxima in intensity
     nodes1 = findNodesIntensity(imageData)
+    print nodes1
     #Look for circles on the boundary of each node
     hough_radii = np.arange(3, 15, 2)
     weights, centers, radii = findNodesHoughCircles(cannyEdges, hough_radii)
@@ -266,10 +287,11 @@ def readImage(image):
         minNode = nodes1[0]
         for node in nodes1:
             newDistSq = findDistSqPoints(center[0], center[1], node.x, node.y)
+            #print "Next distance: ", node, newDistSq
             if(newDistSq < minDistSq):
                 minDistSq = newDistSq
                 minNode = node
-        print center, node, minDistSq
+        #print center, minNode, minDistSq
         finalNodes.append(minNode)
     
     #Find all of the nodes within maxDist of each edge
@@ -277,12 +299,12 @@ def readImage(image):
     graph = nx.Graph()
     maxDist = 20
     for edge in edges:
-        print "Edge: ", edge
+        #print "Edge: ", edge
         edgeNodes = []
         for node in finalNodes:
             dist = findDistPointToLine(node, edge)
-            print "Node: ", node
-            print "Distance: ", dist
+            #print "Node: ", node
+            #print "Distance: ", dist
             if(findDistPointToLine(node, edge) < maxDist):
                 edgeNodes.append(node)
         
@@ -364,12 +386,12 @@ def printTest(imageData):
     ax[2].set_title("Detected lines")
     ax[2].axis("image")
     
-    edges = canny(imageData, sigma=3)
-    lines = probabilistic_hough_line(edges, threshold = 5, line_length = 5, line_gap = 3)
+    edges = findEdgePoints(imageData)
+    lines = probabilistic_hough_line(edges)
     
     fig2, ax = plt.subplots(1, 3, figsize = (8, 3))
     
-    ax[0].imshow(image, cmap = plt.cm.gray)
+    ax[0].imshow(imageData, cmap = plt.cm.gray)
     ax[0].set_title("Input image")
     ax[0].axis("image")
     
@@ -416,6 +438,10 @@ def runTests():
     image = Image.open("../Images/image1.png")
     blurredImage = image.filter(ImageFilter.GaussianBlur(radius = 2))
     imageData = toMatrix(blurredImage, blurredImage.size[1], blurredImage.size[0])
+    edge1 = ((64, 114), (214, 114))
+    
+    for i in xrange(64, 214):
+        print minGradientRange(imageData, i, 114, getMargin())
     #printTest(imageData)
     #nodes = findNodes(imageData)
 
