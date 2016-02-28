@@ -1,7 +1,7 @@
 
 from PIL import Image, ImageFilter
-from skimage.transform import (hough_line, hough_line_peaks, probabilistic_hough_line)
-from skimage.feature import canny
+from skimage.transform import (hough_line, hough_line_peaks, probabilistic_hough_line, resize, hough_circle)
+from skimage.feature import peak_local_max, canny
 from skimage import data
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,36 +26,29 @@ class Node:
 
 #We assume that out image has a margin of this many pixels
 def getMargin():
-    return 4
+    return 10
+    
+def getMinNodeDist():
+    return 10
 
 def getCurvatureCheckDist():
     return 4
 
 #Returns a list of coordinates of potential nodes, ordered from highest to
 #lowest intensity.
-def findNodes(imageData):
+def findNodesIntensity(imageData):
     nodes = []
     margin = getMargin()
-    minIntensity = 40
+    minIntensity = 20
     for i in xrange(margin, len(imageData) - margin):
         for j in xrange(margin, len(imageData[0]) - margin):
             if(imageData[i][j] > minIntensity and isLocalMax(imageData, i, j, margin)):
-                #TODO: Finish curvature computation to remove some (but not all) 
-                #of the edge points
-                #minCurvature, maxCurvature = getCurvatureRange(imageData, i, j)
-                #nodes.append(Node(i, j, minCurvature, maxCurvature))
-                #print i, j, minCurvature, maxCurvature
-                #I'm using a hack that manually chooses the minIntensity, which may
-                #vary for different input graphs
                 nodes.append(Node(j, i, imageData[i][j]))
-                #print j, i, margin
-                #print imageData[i - margin:i + margin + 1,j - margin:j + margin + 1]
+                
     nodes.sort(key = lambda node: -node.intensity)
-    #for node in nodes:
-    #    print node
     return nodes
 
-    
+
 #Returns true if the current point is the maximum over all points within
 #[x - dist, x + dist] x [y - dist, y + dist]
 def isLocalMax(imageData, x, y, dist):
@@ -65,7 +58,7 @@ def isLocalMax(imageData, x, y, dist):
             if(imageData[x + i][y + j] > imageData[x][y]):
                 return False
     return True
-    
+
 
 #Returns the minimum and maximum curvature over all possible directions at the
 #given location
@@ -112,7 +105,71 @@ def getPointCurvature(xDiff, yDiff):
     if(yDiff < 0):
         print "Error: negative value for yDiff"
     return (2.0*yDiff)/(xDiff*xDiff + yDiff*yDiff)
+
     
+def findNodesHoughCircles(cannyEdges, hough_radii):
+    hough_res = hough_circle(cannyEdges, hough_radii)
+    
+    centers = []
+    accums = []
+    radii = []
+
+    #print hough_res
+    for radius, h in zip(hough_radii, hough_res):
+        num_peaks = 5
+        peaks = peak_local_max(h, num_peaks=num_peaks)
+        #print peaks
+        centers.extend(peaks)
+        accums.extend(h[peaks[:, 0], peaks[:, 1]])
+        radii.extend([radius] * num_peaks)
+
+    #Sort each list by accums
+    tupleCenters = [tuple(center) for center in centers]
+    accums, radii, tupleCenters = zip(*sorted(zip(accums, radii, tupleCenters))[::-1])
+    
+    disjointCenters = []
+    disjointRadii = []
+    disjointAccums = []
+    
+    removed = [False for i in xrange(len(centers))]
+    #Loop through the circles in order of their weight
+    minRadiusDist = getMinNodeDist()
+    for i in xrange(len(centers)):
+        #print "Next index: ", i
+        if(not removed[i]):
+            #If our current circle does not overlap with previous circles, add it.
+            #Then remove all later overlapping circles
+            center_x, center_y = centers[i]
+            disjointCenters.append(centers[i])
+            disjointRadii.append(radii[i])
+            disjointAccums.append(accums[i])
+            
+            for j in xrange(i + 1, len(centers)):
+                newCenter_x, newCenter_y = centers[j]
+                newRadius = radii[i]
+                distSq = findDistSqPoints(center_x, center_y, newCenter_x, newCenter_y)
+                neededDist = radius + newRadius + minRadiusDist
+                if(distSq < neededDist*neededDist):
+                    removed[j] = True
+    
+    print "Disjoint centers: ", disjointCenters
+    print "Disjoint accums: ", disjointAccums
+    return disjointAccums, disjointCenters, disjointRadii
+
+
+def findEdgePoints(imageData):
+    edgePoints = []
+    maxSmallestCurvature = 0.01
+    minLargestCurvature = 0.05
+    for y in xrange(margin, len(imageData) - margin):
+        for x in xrange(margin, len(imageData) - margin):
+            minCurvature, maxCurvature = getCurvatureRange(imageData, x, y)
+            if(isLocalMax(imageData, x, y) and minCurvature < maxSmallestCurvature and maxCurvature > minLargestCurvature):
+                edgePoints.append(Node(x, y, imageData[i][j]))
+                
+    print edgePoints
+    return edgePoints
+
     
 #For real-valued x and y, we interpolate the value of imageData[x][y]
 #We average the four surrounding values to get the point in the middle
@@ -136,8 +193,15 @@ def interpolateVal(imageData, x, y):
         xDiff = x - xLower
         return xDiff*imageData[xLower + 1][yLower] + (1 - xDiff)*imageData[xLower][yLower]
     else:
-        #Draw plane between the three points in our triangle
+        #TODO: Draw plane between the three points in our triangle
         pass
+        
+
+#Just round to the closest pixel value
+def interpolateValLazy(imageData, x, y):
+    x = int(x + 0.5)
+    y = int(y + 0.5)
+    return imageData[x][y]
         
     
      
@@ -146,49 +210,6 @@ def invDistanceSq(x1, y1, x2, y2):
     return 1/((x1 - x2)*(x1 - x2) + (y1 - y2)*(y1 - y2))
 
 
-#Performs a Hough transform to find all edges
-def findEdgesHough(imageData):
-    lines = []
-    height, width = imageData.shape
-    h, theta, d = hough_line(imageData)
-    
-    """
-    targetTheta = 0
-    minThetaDiff = 100
-    minThetaIndex = 0
-    print theta
-    for i in range(1, len(theta)):
-        thetaDiff = abs(targetTheta - theta[i])
-        if(thetaDiff < minThetaDiff):
-            minThetaDiff = thetaDiff
-            minThetaIndex = i
-            
-    targetDist = 5
-    minDistDiff = 100
-    minDistIndex = 0
-    for i in range(1, len(d)):
-        distDiff = abs(targetDist - d[i])
-        if(distDiff < minDistDiff):
-            minDistDiff = distDiff
-            minDistIndex = i
-            
-    print "Theta range: ", theta[minThetaIndex - 5: minThetaIndex + 6]
-    print "Distance range: ", d[minDistIndex - 5 : minDistIndex + 6]        
-    print "Target line value: ", h[minDistIndex-5:minDistIndex+6, minThetaIndex-5:minThetaIndex+6]
-    """
-    
-    for hval, angle, dist, in zip(*hough_line_peaks(h, theta, d)):
-        print hval, angle*180.0/math.pi, dist
-        #In theory, our line should go from (0, y0) to (width, y1)
-        #But if y0 and y1 are outside our bounds, we adjust them
-        y0 = (dist - 0 * np.cos(angle)) / np.sin(angle)
-        y1 = (dist - width*np.cos(angle)) / np.sin(angle)
-        x0, y0, x1, y1 = scaleLines(y0, y1, width, height)
-        print x0, y0, x1, y1
-                
-        lines.append(((x0, y0), (x1, y1)))
-        
-    return lines
     
 
 #Takes the line from (0, y0) to (width, y1), and scales it to fit
@@ -226,29 +247,43 @@ def scaleLines(y0, y1, width, height):
 def readImage(image):
     blurredImage = image.filter(ImageFilter.GaussianBlur(radius = 2))
     imageData = toMatrix(blurredImage, blurredImage.size[1], blurredImage.size[0])
-    #for i in xrange(len(imageData)):
-    #    for j in xrange(150, len(imageData[0])):
-    #        imageData[i][j] = 0
-    graph = nx.Graph()
-    nodes = findNodes(imageData)
-    edges = findEdgesHough(imageData)
+    cannyEdges = canny(imageData, sigma=3)
+    #print "Canny edges: ", cannyEdges
     
-    #print "Nodes: ", nodes
-    #print "Edges: ", edges
+    #Look for the most likely Canny edges to be edges between nodes in our diagram
+    edges = probabilistic_hough_line(cannyEdges, threshold = 10, line_length = 100, line_gap = 3)
+    
+    #Look for local maxima in intensity
+    nodes1 = findNodesIntensity(imageData)
+    #Look for circles on the boundary of each node
+    hough_radii = np.arange(3, 15, 2)
+    weights, centers, radii = findNodesHoughCircles(cannyEdges, hough_radii)
+    
+    #Choose the closest point in nodes1 for each circle in nodes2
+    finalNodes = []
+    for center in centers:
+        minDistSq = 1000000
+        minNode = nodes1[0]
+        for node in nodes1:
+            newDistSq = findDistSqPoints(center[0], center[1], node.x, node.y)
+            if(newDistSq < minDistSq):
+                minDistSq = newDistSq
+                minNode = node
+        print center, node, minDistSq
+        finalNodes.append(minNode)
     
     #Find all of the nodes within maxDist of each edge
     print "Finding nodes for each edge"
+    graph = nx.Graph()
     maxDist = 20
     for edge in edges:
-        #print "Edge: ", edge
+        print "Edge: ", edge
         edgeNodes = []
-        for node in nodes:
-            #print "Node: ", node
-            #print "Distance: ", findDistPointToLine(node, edge)
+        for node in finalNodes:
             dist = findDistPointToLine(node, edge)
+            print "Node: ", node
+            print "Distance: ", dist
             if(findDistPointToLine(node, edge) < maxDist):
-                #print "Node: ", node
-                #print "Distance: ", dist
                 edgeNodes.append(node)
         
         if(len(edgeNodes) == 2):
@@ -260,9 +295,8 @@ def readImage(image):
                 graph.add_edge(edgeNodes[0], edgeNodes[1])
         else:
             edgeNodes.sort(key = lambda node: (node.x, node.y))
-                
     
-    #printTest(imageData)
+    printTest(imageData)
     return graph
     
 def findDistSqPoints(x0, y0, x1, y1):
@@ -279,7 +313,7 @@ def findDistPointToLine(node, edge):
     elif(y0 == y1):
         return abs(y0 - node.y)
     else:
-        slope = (y1 - y0)/(x1 - x0)
+        slope = float(y1 - y0)/(x1 - x0)
         intercept = y0 - slope*x0
         #print "Slope/intercept: ", slope, intercept
         
@@ -309,7 +343,6 @@ def findLineIntersect(slope1, intercept1, slope2, intercept2):
 def printTest(imageData):
     print "Entering printTest..."
     h, theta, d = hough_line(imageData)
-    
     fig, ax = plt.subplots(1, 3, figsize = (10, 4))
     
     ax[0].imshow(imageData, cmap=plt.cm.gray)
@@ -326,51 +359,56 @@ def printTest(imageData):
     
     ax[2].imshow(imageData, cmap = plt.cm.gray)
     height, width = imageData.shape
-    for hval, angle, dist, in zip(*hough_line_peaks(h, theta, d, min_angle = 10)):
-        print hval, angle*180.0/math.pi, dist
-        y0 = (dist - 0 * np.cos(angle)) / np.sin(angle)
-        y1 = (dist - width*np.cos(angle)) / np.sin(angle)
-        x0, y0, x1, y1 = scaleLines(y0, y1, width, height)
-        #print "Coordinates after: ", x0, y0, x1, y1
-        ax[2].plot((x0, x1), (y0, y1), '-r')
         
     ax[2].axis((0, width, height, 0))
     ax[2].set_title("Detected lines")
     ax[2].axis("image")
     
-    #edges = canny(imageData, 2, 1, 25)
-    #lines = probabilistic_hough_line(edges, threshold = 10, line_length = 5, line_gap = 3)
+    edges = canny(imageData, sigma=3)
+    lines = probabilistic_hough_line(edges, threshold = 5, line_length = 5, line_gap = 3)
     
-    #fig2, ax = plt.subplots(1, 3, figsize = (8, 3))
+    fig2, ax = plt.subplots(1, 3, figsize = (8, 3))
     
-    #ax[0].imshow(image, cmap = plt.cm.gray)
-    #ax[0].set_title("Input image")
-    #ax[0].axis("image")
+    ax[0].imshow(image, cmap = plt.cm.gray)
+    ax[0].set_title("Input image")
+    ax[0].axis("image")
     
-    #ax[1].imshow(edges, cmap = plt.cm.gray)
-    #ax[1].set_title("Canny edges")
-    #ax[1].axis("image")
+    ax[1].imshow(edges, cmap = plt.cm.gray)
+    ax[1].set_title("Canny edges")
+    ax[1].axis("image")
     
-    #ax[2].imshow(edges * 0)
+    ax[2].imshow(edges * 0)
     
-    #for line in lines:
-    #    p0, p1 = line
-    #    ax[2].plot((p0[0], p1[0]), (p0[1], p1[1]))
+    for line in lines:
+        p0, p1 = line
+        ax[2].plot((p0[0], p1[0]), (p0[1], p1[1]))
         
-    #ax[2].set_title("Probabilistic Hough")
-    #ax[2].axis("image")
+    ax[2].set_title("Probabilistic Hough")
+    ax[2].axis("image")
     plt.show()
     
-    
-    
+
 #Converts image to a grayscale numpy array, where 0 = white and 255 = black
+#Also pads the sides with black
 def toMatrix(image, width, height):
     image = image.convert("L")
     imageData = list(image.getdata())
     for i in xrange(len(imageData)):
-        imageData[i] = 255 - imageData[i] #Flip scale to 0 = white
-    
-    dataMatrix = np.asarray(imageData).reshape(width, height)    
+        imageData[i] = float(255 - imageData[i]) #Flip scale to 0 = white
+        
+    minData = min(imageData)
+    for i in xrange(len(imageData)):
+        imageData[i] -= minData
+        
+    margin = getMargin()
+    dataMatrix = np.zeros((width + 2*margin, height + 2*margin))
+    for i in xrange(width + 2*margin):
+        for j in xrange(height + 2*margin):
+            if(i < margin or i >= width + margin or j < margin or j >= height + margin):
+                dataMatrix[i][j] = 0
+            else:
+                dataMatrix[i][j] = imageData[(i - margin) + (j - margin)*width]
+            
     return dataMatrix
 
 
@@ -389,10 +427,22 @@ def testInterpolateVal():
         print [interpolateVal(testData, i/5.0, j/5.0) for j in xrange(size)]
 
 
+def compareImages():
+    image1 = Image.open("../Images/image5.png")
+    image2 = Image.open("../Images/image5_bold.png")
+    
+    blurredImage1 = image1.filter(ImageFilter.GaussianBlur(radius = 2))
+    imageData1 = toMatrix(blurredImage1, blurredImage1.size[1], blurredImage1.size[0])
+    blurredImage2 = image2.filter(ImageFilter.GaussianBlur(radius = 2))
+    imageData2 = toMatrix(blurredImage2, blurredImage2.size[1], blurredImage2.size[0])
+    
+    h1, theta1, d1 = hough_line(imageData1)
+    h2, theta2, d2 = hough_line(imageData2)
+
 if __name__ == '__main__':
     #testInterpolateVal()
     #runTests()
-    image = Image.open("../Images/image5.png")
+    image = Image.open("../Images/image1.png")
     graph = readImage(image)
     print graph.nodes()
     print graph.edges()
